@@ -14,14 +14,17 @@ DBNAME = "postgres" #os.getenv("dbname")
 # Configuración de la página
 st.set_page_config(page_title="Predictor de Iris", page_icon="🌸")
 # Connect to the database
-try:
-    connection = psycopg2.connect(
+def get_connection():
+    return psycopg2.connect(
         user=USER,
         password=PASSWORD,
         host=HOST,
         port=PORT,
         dbname=DBNAME
     )
+
+try:
+    connection = get_connection()
     print("Connection successful!")
     
     # Create a cursor to execute SQL queries
@@ -93,3 +96,32 @@ if model is not None:
         st.write("Probabilidades:")
         for species, prob in zip(target_names, probabilities):
             st.write(f"- {species}: {prob:.1%}")
+
+        # Insertar en la base de datos
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+            # Crear tabla si no existe
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS iris_predictions (
+                    id SERIAL PRIMARY KEY,
+                    sepal_length FLOAT,
+                    sepal_width FLOAT,
+                    petal_length FLOAT,
+                    petal_width FLOAT,
+                    predicted_species VARCHAR(50),
+                    confidence FLOAT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            # Insertar los datos
+            cursor.execute("""
+                INSERT INTO iris_predictions (sepal_length, sepal_width, petal_length, petal_width, predicted_species, confidence)
+                VALUES (%s, %s, %s, %s, %s, %s);
+            """, (sepal_length, sepal_width, petal_length, petal_width, predicted_species, float(max(probabilities))))
+            connection.commit()
+            cursor.close()
+            connection.close()
+            st.info("Predicción guardada en la base de datos.")
+        except Exception as e:
+            st.error(f"Error al guardar en la base de datos: {e}")
